@@ -17,7 +17,7 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="meduim",  # default to "tiny" for speed
+        default="tiny",  # default to "tiny" for speed
         choices=["tiny", "base", "small", "medium", "large", "turbo"],
         help="Whisper model to use."
     )
