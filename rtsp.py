@@ -10,11 +10,14 @@ import argparse
 from fastapi import FastAPI, WebSocket
 import uvicorn
 from concurrent.futures import ThreadPoolExecutor
+#from diart import OnlineDiarization
+#from diart.sources import AudioSource
 
 parser = argparse.ArgumentParser(description="Real-time RTSP transcription hub.")
 parser.add_argument("--model", default="tiny", choices=["tiny", "base", "small", "medium", "large", "turbo"], help="Whisper model to use.")
 parser.add_argument("--non_english", action="store_true", help="Don't force the English model if it's smaller than 'large'.")
 parser.add_argument("--phrase_timeout", default=1.5, type=float, help="Silence gap (sec) to trigger transcription.")
+parser.add_argument("--max_duration", default=5.0, type=float, help="Maximum duration (sec) of continuous speech before transcription.")
 parser.add_argument("--vad_threshold", default=0.5, type=float, help="VAD sensitivity (0.1 to 1.0) for speech detection.")
 parser.add_argument("--rtsp_url", default="rtsp://localhost:8554/live", help="RTSP stream URL.")
 args = parser.parse_args()
@@ -71,14 +74,25 @@ async def transcribe_rtsp(websocket: WebSocket):
     voiced_buffer = []
     is_speaking = False
     silence_counter = 0
-    silence_limit = int(args.phrase_timeout * 32) # Approx 32 chunks per second
+
+    chunks_per_sec = SAMPLE_RATE / CHUNK_SIZE
+    silence_limit = int(args.phrase_timeout * chunks_per_sec) #Approximate chunks per second
+    max_duration_limit = int(args.max_duration * chunks_per_sec)
+    overlap_limit = int(1.0 * chunks_per_sec) #number of chunks to overlap between phrases to avoid cutting off speech
     
     pre_roll = collections.deque(maxlen=30)
     yamnet_buffer = collections.deque(maxlen=15600)
     chunk_counter = 0
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     print(f"Listening to RTSP stream: {args.rtsp_url}. Speak now.")
+
+    #Run transcription in a separate thread so it doesnt block main loop
+    async def process_audio_task(audio_data):
+        result = await loop.run_in_executor(whisper_executor, get_speech, audio_data)
+        text = result['text'].strip()
+        if text:
+            await websocket.send_json({"type": "speech", "text": text})
 
     try:
         while True:
@@ -108,6 +122,11 @@ async def transcribe_rtsp(websocket: WebSocket):
                     voiced_buffer.extend(list(pre_roll))
                 voiced_buffer.append(audio_chunk)
                 silence_counter = 0
+
+                if len(voiced_buffer) >= max_duration_limit:
+                    full_audio = np.concatenate(voiced_buffer)
+                    asyncio.create_task(process_audio_task(full_audio))
+                    voiced_buffer = voiced_buffer[-overlap_limit:] #keep some overlap for next phrase
             else:
                 if is_speaking:
                     voiced_buffer.append(audio_chunk)
@@ -118,10 +137,7 @@ async def transcribe_rtsp(websocket: WebSocket):
                         silence_counter = 0
                         if len(voiced_buffer) > 20: 
                             full_audio = np.concatenate(voiced_buffer)
-                            result = await loop.run_in_executor(whisper_executor, get_speech, full_audio)
-                            text = result['text'].strip()
-                            if text:
-                                await websocket.send_json({"type": "speech", "text": text})
+                            asyncio.create_task(process_audio_task(full_audio))
                         voiced_buffer = []
                 else:
                     pre_roll.append(audio_chunk)
@@ -129,7 +145,10 @@ async def transcribe_rtsp(websocket: WebSocket):
     except Exception as e:
         print(f"System Error: {e}")
     finally:
-        process.terminate()
+        try:
+            process.terminate()
+        except:
+            pass
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
