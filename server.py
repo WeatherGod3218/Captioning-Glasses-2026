@@ -10,11 +10,14 @@ import argparse
 from fastapi import FastAPI, WebSocket
 import uvicorn
 from concurrent.futures import ThreadPoolExecutor
+#from diart import OnlineDiarization
+#from diart.sources import AudioSource
 
 parser = argparse.ArgumentParser(description="Real-time WebSocket transcription hub.")
 parser.add_argument("--model", default="tiny", choices=["tiny", "base", "small", "medium", "large", "turbo"], help="Whisper model to use.")
 parser.add_argument("--non_english", action="store_true", help="Don't force the English model if it's smaller than 'large'.")
 parser.add_argument("--phrase_timeout", default=1.5, type=float, help="Silence gap (sec) to trigger transcription.")
+parser.add_argument("--max_duration", default=5.0, type=float, help="Maximum duration (sec) of continuous speech before transcription.")
 parser.add_argument("--vad_threshold", default=0.5, type=float, help="VAD sensitivity (0.1 to 1.0) for speech detection.")
 args = parser.parse_args()
 
@@ -90,6 +93,13 @@ async def websocket_endpoint(websocket: WebSocket):
             print(f"Transcription Error: {e}")
         finally:
             is_transcribing = False
+
+    #Run transcription in a separate thread so it doesnt block main loop
+    async def process_audio_task(audio_data):
+        result = await loop.run_in_executor(whisper_executor, get_speech, audio_data)
+        text = result['text'].strip()
+        if text:
+            await websocket.send_json({"type": "speech", "text": text})
 
     try:
         while True:
