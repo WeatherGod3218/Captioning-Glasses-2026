@@ -93,14 +93,6 @@ async def websocket_endpoint(websocket: WebSocket):
             print(f"Transcription Error: {e}")
         finally:
             is_transcribing = False
-
-    #Run transcription in a separate thread so it doesnt block main loop
-    async def process_audio_task(audio_data):
-        result = await loop.run_in_executor(whisper_executor, get_speech, audio_data)
-        text = result['text'].strip()
-        if text:
-            await websocket.send_json({"type": "speech", "text": text})
-
     try:
         while True:
             raw_bytes = await websocket.receive_bytes()
