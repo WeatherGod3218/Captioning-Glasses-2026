@@ -12,7 +12,9 @@ WORKDIR /app
 COPY requirements.txt .
 COPY server.py . 
 
+ENV HF_TOKEN=""
+
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 RUN pip install -r requirements.txt
 
-CMD ["python", "server.py", "--model", "turbo"]
+CMD ["python", "server.py"]
