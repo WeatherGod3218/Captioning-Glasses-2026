@@ -186,7 +186,7 @@ async def pygame_loop():
         await asyncio.sleep(0.01)
 
 async def main():
-    uri = "wss://wolf-arms-ipaq-farm.trycloudflare.com/ws"
+    uri = "wss://euros-samba-enhance-civil.trycloudflare.com/ws"
     try:
         async with websockets.connect(uri) as websocket:
             print("Connected to WebSocket. Launching Pygame UI...")

@@ -152,7 +152,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("Client connected.")
 
-    voiced_buffer = [] #audo chunks for current speech
+    voiced_buffer = [] #audio chunks for current speech
     is_speaking = False
     silence_counter = 0
     is_transcribing = False 
@@ -258,4 +258,4 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"WS Disconnected: {e}")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=2001)
