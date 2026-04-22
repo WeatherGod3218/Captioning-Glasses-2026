@@ -1,6 +1,6 @@
 ---
-site_name: "JumpStart Docs"
-site_description: "Documentation for CSH Jumpstart System"
+site_name: "CSH Caption Glasses Documentation"
+site_description: "Documentation for Computer Science House's Captioning Glasses"
 theme:
   name: material
   palette:
@@ -37,18 +37,6 @@ use_directory_urls: false
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started/getting-started.md
-  - Backend:
-      - Calendar: core/csh_calendar.md
-      - Slack: core/slack.md
-      - Wikithoughts: core/wikithoughts.md
-  - Endpoints:
-      - Calendar: endpoints/csh_calendar.md
-      - Slack: endpoints/slack.md
-      - Wikithoughts: endpoints/wikithoughts.md
-  - Themes:
-      - Themes: themes/overview.md
-      - Adding Your Own: themes/how_to.md
 
 plugins:
   - search

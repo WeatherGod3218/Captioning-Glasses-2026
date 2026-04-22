@@ -5,7 +5,6 @@ import tensorflow as tf
 
 tf.config.set_visible_devices([], "GPU")  # Forces TF to use CPU
 import tensorflow_hub as hub
-import argparse
 import os
 import huggingface_hub
 import time
@@ -16,62 +15,44 @@ import torch
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-import uvicorn
+
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel
+import pyannote.audio.core.model as _pyannote_model
 from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from diart.sources import AudioSource
 from diart.inference import StreamingInference
 
-from logging import getLogger, Logger
-from config import BASE_DIR, HF_TOKEN
+import logging
+from config import BASE_DIR, HF_TOKEN, VAD_THRESHOLD, MAX_DURATION, PHRASE_TIMEOUT
 
-logger: Logger = getLogger(__name__)
-# huggingface patch to support old token arg
-_old_download = huggingface_hub.hf_hub_download
+logging.basicConfig(level=logging.INFO)
 
+logger: logging.Logger = logging.getLogger(__name__)
+def _make_patched(fn):
+    def patched(*args, **kwargs):
+        if "use_auth_token" in kwargs:
+            kwargs["token"] = kwargs.pop("use_auth_token", None)  # or remap to "token"
+        return fn(*args, **kwargs)
+    return patched
 
-def _patched_download(*args, **kwargs):
-    if "use_auth_token" in kwargs:
-        kwargs["token"] = kwargs.pop("use_auth_token")
-    return _old_download(*args, **kwargs)
+logger.info("Starting Patches for Auth Token")
+huggingface_hub.hf_hub_download = _make_patched(huggingface_hub.hf_hub_download)
+_pyannote_model.hf_hub_download = _make_patched(_pyannote_model.hf_hub_download) # Patch out both our code and pyannotes code to use the token instead,
+# How the thing above worked before this? God only knows
 
+if hasattr(huggingface_hub, "cached_download"): #check and see if it was cached
+    huggingface_hub.cached_download = _make_patched(huggingface_hub.cached_download)
 
-huggingface_hub.hf_hub_download = _patched_download
-
+logger.info("Starting Patches for Torch Loading")
 _old_torch_load = torch.load
-
-
 def _patched_torch_load(*args, **kwargs):
     kwargs["weights_only"] = False
     return _old_torch_load(*args, **kwargs)
-
-
 torch.load = _patched_torch_load
 
-parser = argparse.ArgumentParser(description="Real-time WebSocket transcription hub.")
-parser.add_argument(
-    "--phrase_timeout",
-    default=0.6,
-    type=float,
-    help="Silence gap (sec) to trigger final transcription.",
-)
-parser.add_argument(
-    "--max_duration",
-    default=3.0,
-    type=float,
-    help="Max duration before forcing a final result.",
-)
-parser.add_argument(
-    "--vad_threshold",
-    default=0.4,
-    type=float,
-    help="VAD sensitivity (lower = more sensitive).",
-)
-args = parser.parse_known_args()
-
-app = FastAPI()
-
+logger.info("Starting FastAPI application")
+app = FastAPI(docs_url="/swag")
 if os.path.exists(os.path.join(BASE_DIR, "docs")):
 	logger.info("Documentation directory found, setting up documentation endpoint!")
 
@@ -88,6 +69,8 @@ else:
 	logger.warning("Documentation directory not found, skipping documentation setup!")
 
 
+logger.info("Initiating Threads")
+
 gpu_lock = asyncio.Lock()
 
 whisper_executor = ThreadPoolExecutor(max_workers=1)
@@ -97,20 +80,20 @@ diart_executor = ThreadPoolExecutor(max_workers=1)
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 2048
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device.upper()} for transcription.")
+device:bool = "cuda" if torch.cuda.is_available() else "cpu"
+logger.info(f"Using {device.upper()} for transcription.")
 
-print("Loading Whisper...")
-compute_type = "float16" if device == "cuda" else "int8"
-speech_model = WhisperModel(
+logger.info("Loading Whisper...")
+compute_type:str = "float16" if device == "cuda" else "int8"
+speech_model:WhisperModel = WhisperModel(
     "deepdml/faster-whisper-large-v3-turbo-ct2", device=device, compute_type=compute_type
 )
 
-print("Loading Diart (Pyannote)...")
-diart_config = SpeakerDiarizationConfig(
+logger.info("Loading Diart (Pyannote)...")
+diart_config: SpeakerDiarizationConfig = SpeakerDiarizationConfig(
     duration=2.0, step=0.3, latency="min", sample_rate=SAMPLE_RATE, hf_token=HF_TOKEN
 )
-diarization = SpeakerDiarization(diart_config)
+diarization: SpeakerDiarization = SpeakerDiarization(diart_config)
 
 
 # Audio source to feed websocket audio into Diart
@@ -219,7 +202,7 @@ async def websocket_endpoint(websocket: WebSocket):
     utterance_start_time = time.monotonic()
 
     chunks_per_sec = SAMPLE_RATE / CHUNK_SIZE
-    silence_limit = int(args.phrase_timeout * chunks_per_sec)
+    silence_limit = int(PHRASE_TIMEOUT * chunks_per_sec)
 
     pre_roll = collections.deque(
         maxlen=10
@@ -292,7 +275,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             speech_prob = await loop.run_in_executor(None, check_vad)
 
-            if speech_prob > args.vad_threshold:
+            if speech_prob > VAD_THRESHOLD:
                 if not is_speaking:
                     is_speaking = True
                     utterance_start_time = time.monotonic()
@@ -312,7 +295,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
 
                 # Force final transcriptions if buffer gets too long
-                if (len(voiced_buffer) * CHUNK_SIZE) / SAMPLE_RATE >= args.max_duration:
+                if (len(voiced_buffer) * CHUNK_SIZE) / SAMPLE_RATE >= MAX_DURATION:
                     speaker_snapshot = get_speaker_at(utterance_start_time)
                     asyncio.create_task(
                         process_audio_task(

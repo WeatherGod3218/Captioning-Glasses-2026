@@ -38,3 +38,7 @@ def _get_env_variable(name: str, default: str | None = None) -> str | None:
 BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))
 
 HF_TOKEN: str = _get_env_variable("HF_TOKEN", "default")
+
+PHRASE_TIMEOUT:float = float(_get_env_variable("PHRASE_TIMEOUT",0.6)) # Silence gap (sec) to trigger final transcription.
+MAX_DURATION:float = float(_get_env_variable("MAX_DURATION",3.0)) # Max duration before forcing a final result
+VAD_THRESHOLD:float = float(_get_env_variable("VAD_THRESHOLD",0.4)) # VAD sensitivity (lower = more sensitive)
