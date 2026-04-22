@@ -1,0 +1,68 @@
+---
+site_name: "JumpStart Docs"
+site_description: "Documentation for CSH Jumpstart System"
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-2
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tops
+    - navigation.expand
+    - navigation.instant
+    - navigation.sections
+    - navigation.tracking
+    - navigation.search.highlight
+    - navigation.search.shareable
+    - navigation.search.suggest
+    - navigation.search.suggest.indexes
+    - navigation.search.suggest.terms
+    - navigation.search.suggest.results
+    - navigation.search.suggest.results.indexes
+  logo: images/jumpstart_half.png
+  favicon: images/jumpstart_small.png
+
+use_directory_urls: false
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started/getting-started.md
+  - Backend:
+      - Calendar: core/csh_calendar.md
+      - Slack: core/slack.md
+      - Wikithoughts: core/wikithoughts.md
+  - Endpoints:
+      - Calendar: endpoints/csh_calendar.md
+      - Slack: endpoints/slack.md
+      - Wikithoughts: endpoints/wikithoughts.md
+  - Themes:
+      - Themes: themes/overview.md
+      - Adding Your Own: themes/how_to.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: ["src"]
+          options:
+            heading_level: 3
+            show_source: true
+            docstring_style: google
+            show_root_heading: false
+            show_root_full_path: false
+            show_signature: false
+            filters:
+              - ".*"

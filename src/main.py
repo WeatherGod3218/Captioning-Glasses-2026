@@ -10,7 +10,23 @@ import os
 import huggingface_hub
 import time
 
+# Torch patch to make sure model loading works on older versions
+import torch
 
+from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+import uvicorn
+from concurrent.futures import ThreadPoolExecutor
+from faster_whisper import WhisperModel
+from diart import SpeakerDiarization, SpeakerDiarizationConfig
+from diart.sources import AudioSource
+from diart.inference import StreamingInference
+
+from logging import getLogger, Logger
+from config import BASE_DIR, HF_TOKEN
+
+logger: Logger = getLogger(__name__)
 # huggingface patch to support old token arg
 _old_download = huggingface_hub.hf_hub_download
 
@@ -23,9 +39,6 @@ def _patched_download(*args, **kwargs):
 
 huggingface_hub.hf_hub_download = _patched_download
 
-# Torch patch to make sure model loading works on older versions
-import torch
-
 _old_torch_load = torch.load
 
 
@@ -35,14 +48,6 @@ def _patched_torch_load(*args, **kwargs):
 
 
 torch.load = _patched_torch_load
-
-from fastapi import FastAPI, WebSocket
-import uvicorn
-from concurrent.futures import ThreadPoolExecutor
-from faster_whisper import WhisperModel
-from diart import SpeakerDiarization, SpeakerDiarizationConfig
-from diart.sources import AudioSource
-from diart.inference import StreamingInference
 
 parser = argparse.ArgumentParser(description="Real-time WebSocket transcription hub.")
 parser.add_argument(
@@ -63,9 +68,25 @@ parser.add_argument(
     type=float,
     help="VAD sensitivity (lower = more sensitive).",
 )
-args = parser.parse_args()
+args = parser.parse_known_args()
 
 app = FastAPI()
+
+if os.path.exists(os.path.join(BASE_DIR, "docs")):
+	logger.info("Documentation directory found, setting up documentation endpoint!")
+
+	app.mount(
+		"/docs", StaticFiles(directory=os.path.join(BASE_DIR, "docs")), name="docs"
+	)
+
+	@app.get("/docs", include_in_schema=False)
+	async def docs_redirect():
+		# Mkdocs links dynamically and not being on the direct index.html causes issues
+		return RedirectResponse(url="/docs/index.html")
+
+else:
+	logger.warning("Documentation directory not found, skipping documentation setup!")
+
 
 gpu_lock = asyncio.Lock()
 
@@ -80,15 +101,14 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device.upper()} for transcription.")
 
 print("Loading Whisper...")
+compute_type = "float16" if device == "cuda" else "int8"
 speech_model = WhisperModel(
-    "deepdml/faster-whisper-large-v3-turbo-ct2", device=device, compute_type="float16"
+    "deepdml/faster-whisper-large-v3-turbo-ct2", device=device, compute_type=compute_type
 )
 
 print("Loading Diart (Pyannote)...")
-hf_token = os.environ.get("HF_TOKEN")
-
 diart_config = SpeakerDiarizationConfig(
-    duration=2.0, step=0.3, latency="min", sample_rate=SAMPLE_RATE, hf_token=hf_token
+    duration=2.0, step=0.3, latency="min", sample_rate=SAMPLE_RATE, hf_token=HF_TOKEN
 )
 diarization = SpeakerDiarization(diart_config)
 
@@ -327,7 +347,3 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except Exception as e:
         print(f"WS Disconnected: {e}")
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=2001)
