@@ -11,6 +11,7 @@ from queue import Queue
 from time import sleep
 from sys import platform
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Real-time mic transcription with SpeechRecognition + whisper, now word-by-word & faster."
@@ -19,37 +20,37 @@ def main():
         "--model",
         default="tiny",  # default to "tiny" for speed
         choices=["tiny", "base", "small", "medium", "large", "turbo"],
-        help="Whisper model to use."
+        help="Whisper model to use.",
     )
     parser.add_argument(
         "--non_english",
         action="store_true",
-        help="Don't force the English model if it's smaller than 'large'."
+        help="Don't force the English model if it's smaller than 'large'.",
     )
     parser.add_argument(
         "--energy_threshold",
         default=1000,
         type=int,
-        help="Mic detection threshold (SpeechRecognition)."
+        help="Mic detection threshold (SpeechRecognition).",
     )
     parser.add_argument(
         "--record_timeout",
         default=1.0,
         type=float,
-        help="Seconds of audio after which we process a chunk."
+        help="Seconds of audio after which we process a chunk.",
     )
     parser.add_argument(
         "--phrase_timeout",
         default=1.0,
         type=float,
-        help="Silence gap (sec) between chunks => new line in transcription."
+        help="Silence gap (sec) between chunks => new line in transcription.",
     )
     if "linux" in platform:
         parser.add_argument(
             "--default_microphone",
             default="pulse",
             type=str,
-            help="Mic name on Linux. Use 'list' to list devices."
+            help="Mic name on Linux. Use 'list' to list devices.",
         )
     args = parser.parse_args()
 
@@ -115,7 +116,6 @@ def main():
         # phrase_time_limit=record_timeout
     )
 
-
     print("Recording... Speak!\n")
     print(recorder.pause_threshold)
     while True:
@@ -131,7 +131,10 @@ def main():
                 audio_data = b"".join(list(data_queue.queue))
                 data_queue.queue.clear()
 
-                audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                audio_np = (
+                    np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+                    / 32768.0
+                )
 
                 # Try GPU if available
                 use_fp16 = torch.cuda.is_available()
@@ -139,8 +142,8 @@ def main():
                 result = audio_model.transcribe(
                     audio_np,
                     fp16=use_fp16,
-                    beam_size=1,          # faster
-                    word_timestamps=True  # key for word-by-word
+                    beam_size=1,  # faster
+                    word_timestamps=True,  # key for word-by-word
                 )
 
                 # If there's a big pause => new line of words
@@ -158,13 +161,13 @@ def main():
                         lines[-1].append(word)
 
                 # Clear screen & re-print everything word-by-word
-                os.system('cls' if os.name == 'nt' else 'clear')
+                os.system("cls" if os.name == "nt" else "clear")
                 for word_list in lines:
                     # Join words with a space
                     # sys.stdout.write("\033[F")
                     # sys.stdout.write("\033[K")
                     print("".join(word_list))
-                    
+
                 print("", end="", flush=True)
 
             else:
@@ -176,7 +179,7 @@ def main():
 
     print("\n\nFinal Transcript:")
     for i, word_list in enumerate(lines):
-        print(f"Line {i+1}: {''.join(word_list)}")
+        print(f"Line {i + 1}: {''.join(word_list)}")
 
 
 if __name__ == "__main__":

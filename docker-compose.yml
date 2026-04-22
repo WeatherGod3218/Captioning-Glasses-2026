@@ -1,0 +1,13 @@
+---
+
+services:
+  jumpstart:
+    build: 
+      context: .
+      dockerfile: Containerfile
+    container_name: CaptionGlasses
+    ports:
+      - "2001:2001"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+
