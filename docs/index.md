@@ -1,4 +1,4 @@
-# Captioning Geads Up Display Glasses
+# Captioning Heads Up Display Glasses
 
 a project started by Logan Endes and Grant Hawerlander in 2025. The goal is to create glasses that will listen to their surroundings and display what people are saying on the inside of the glasses. 
 

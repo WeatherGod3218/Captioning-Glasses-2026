@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim as docbuilder
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS docbuilder
 WORKDIR /docs
 
 COPY mkdocs.yml .
@@ -30,4 +30,4 @@ RUN uv pip install --system --no-cache-dir \
     uv pip install --system --no-cache-dir -r requirements.txt && \
     rm requirements.txt
     
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "2001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "2001","--log-config", "/src/logging_config.yaml"]
