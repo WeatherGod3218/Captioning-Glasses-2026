@@ -1,12 +1,11 @@
 """
-,meep
+File 
 """
 
 import tensorflow as tf
-import tensorflow_hub as hub
 import torch
 
-from numpy import ndarray, float32
+from numpy import ndarray
 
 from faster_whisper import WhisperModel
 from logging import Logger, getLogger
@@ -33,15 +32,6 @@ vad_model: torch.nn = vad_model.to(device)
 
 
 logger.info("Loading YAMNet...")
-yamnet_model: hub.KerasLayer = hub.load("https://tfhub.dev/google/yamnet/1")
-class_map_path: bytes = yamnet_model.class_map_path().numpy()
-class_names: list[str] = []
-
-with tf.io.gfile.GFile(class_map_path) as f:
-    class_names = [
-        line.split(",")[2].strip().strip('"') for line in f.read().splitlines()[1:]
-    ]
-
 
 def get_speech(audio: ndarray, is_final: bool = True) -> dict[str, str]:
     """
@@ -73,25 +63,6 @@ def get_speech(audio: ndarray, is_final: bool = True) -> dict[str, str]:
     )
     text = " ".join([segment.text for segment in segments])
     return {"text": text}
-
-
-def get_sounds(audio: ndarray) -> tuple[str, float32]:
-    """
-    Processes audio for sounds to be extracted and displayed
-
-    Arguments:
-        audio (ndarray): The audio byte array to be processed
-
-    Returns:
-        str, The highest likely sound effect in the environment
-        float32, The confidence level of the sound effect
-    """
-
-    scores, _, _ = yamnet_model(audio)
-    class_scores: tf.Tensor = tf.reduce_mean(scores, axis=0)
-    top_class: tf.Tensor = tf.argmax(class_scores)
-    return class_names[top_class], class_scores[top_class].numpy()
-
 
 def check_vad(audio: ndarray) -> float:
     """

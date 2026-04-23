@@ -3,11 +3,25 @@ import numpy as np
 import collections
 from logging import Logger, getLogger
 from pyannote.core import Annotation, Segment
+
+import tensorflow as tf
+import tensorflow_hub as hub
+
 from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from diart.sources import AudioSource
 from diart.inference import StreamingInference
 
 from config import HF_TOKEN, SAMPLE_RATE
+
+
+yamnet_model: hub.KerasLayer = hub.load("https://tfhub.dev/google/yamnet/1")
+class_map_path: bytes = yamnet_model.class_map_path().numpy()
+class_names: list[str] = []
+
+with tf.io.gfile.GFile(class_map_path) as f:
+    class_names = [
+        line.split(",")[2].strip().strip('"') for line in f.read().splitlines()[1:]
+    ]
 
 
 # Audio source to feed websocket audio into Diart
@@ -23,7 +37,6 @@ class WebSocketAudioSource(AudioSource):
 
     def push_audio(self, chunk: np.ndarray):
         self.stream.on_next(chunk.reshape(1, -1))
-
 
 logger: Logger = getLogger(__name__)
 logger.info("Loading Diart (Pyannote)...")
@@ -67,6 +80,23 @@ def on_diarization_update(result: tuple[Annotation] | Annotation) -> None:
     except Exception:
         return
 
+
+def get_sounds(audio: np.ndarray) -> tuple[str, np.float32]:
+    """
+    Processes audio for sounds to be extracted and displayed
+
+    Arguments:
+        audio (ndarray): The audio byte array to be processed
+
+    Returns:
+        str, The highest likely sound effect in the environment
+        float32, The confidence level of the sound effect
+    """
+
+    scores, _, _ = yamnet_model(audio)
+    class_scores: tf.Tensor = tf.reduce_mean(scores, axis=0)
+    top_class: tf.Tensor = tf.argmax(class_scores)
+    return class_names[top_class], class_scores[top_class].numpy()
 
 def get_speaker_at(timestamp: float, max_age: float = 1.5) -> str:
     """
