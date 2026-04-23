@@ -1,5 +1,5 @@
 """
-File 
+Contains all of the functions f
 """
 
 import tensorflow as tf
